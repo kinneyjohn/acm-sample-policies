@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- acs-operator-installed.yaml
+- acs-secured-cluster-configured.yaml
+- cert-manager-operator-installed.yaml
+- ldap-oauth-configured.yaml
+- vsphere-cluster-autoscaler.yaml
+- vsphere-infra-machineset-configured.yaml

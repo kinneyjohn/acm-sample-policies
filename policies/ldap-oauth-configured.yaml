@@ -1,0 +1,361 @@
+# This policy configures the OAuth for using an LDAP provider, and creates a job to sync with an external LDAP.
+# In this example, Active Directory is used as external IDP.
+# For more information on configuring the OAuth server, consult the OpenShift documentation: 
+# https://docs.openshift.com/container-platform/4.10/authentication/identity_providers/configuring-ldap-identity-provider.html
+---
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
+metadata:
+  name: placement-ldap-oauth-group-sync-configured
+  namespace: acm-secrets
+spec:
+  predicates:
+  - requiredClusterSelector:
+      labelSelector:
+        matchExpressions:
+        - key: vendor
+          operator: In
+          values:
+          - OpenShift
+        - key: name
+          operator: In
+          values:
+          - cluster-xyz
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: binding-ldap-oauth-group-sync-configured
+  namespace: acm-secrets
+placementRef:
+  apiGroup: cluster.open-cluster-management.io
+  kind: Placement
+  name: placement-ldap-oauth-group-sync-configured
+subjects:
+- apiGroup: policy.open-cluster-management.io
+  kind: Policy
+  name: ldap-oauth-group-sync-configured
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: ldap-oauth-group-sync-configured
+  namespace: acm-secrets
+  annotations:
+    policy.open-cluster-management.io/categories: CM Configuration Management, AC Access Control
+    policy.open-cluster-management.io/controls: AC-3 Access Enforcement
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+spec:
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+    # Create cluster-ops namespace where ldapsync cronjob will be created
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-cluster-ops-ns
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Namespace
+                metadata:
+                  name: cluster-ops
+                  annotations:
+                    openshift.io/description: ""
+                    openshift.io/display-name: "Cluster Ops for Admins"
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high
+    # OAuth and LDAP sync cronjob need the LDAP bind password to connect to LDAP
+    # The ldap bind password secret is stored in the acm-secrets namespace for centralized management
+    # Secret data is copied from the hub cluster and propagated into the openshift-config and cluster-ops namespaces
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-oauth-ldap-bindpassword-secret
+        spec:
+          object-templates:
+            - complianceType: mustonlyhave
+              objectDefinition:
+                apiVersion: v1
+                data:
+                  bindPassword: '{{hub fromSecret "acm-secrets" "ldap-secret" "bindPassword" hub}}'
+                kind: Secret
+                metadata:
+                  name: ldap-secret
+                  namespace: openshift-config
+                type: Opaque
+            - complianceType: mustonlyhave
+              objectDefinition:
+                apiVersion: v1
+                data:
+                  bindPassword: '{{hub fromSecret "acm-secrets" "ldap-secret" "bindPassword" hub}}'
+                kind: Secret
+                metadata:
+                  name: ldap-secret
+                  namespace: cluster-ops
+                type: Opaque
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high
+    # For secure LDAP connections we need to define a configmap which contains the certificate authority bundle
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-oauth-ca-cert-cm
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: ca-config-map
+                  namespace: openshift-config
+                data:
+                  ca.crt: |
+                    {{hub fromConfigMap "acm-secrets" "ca-config-map" "ca.crt" | indent 4 hub}}
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: ca-config-map
+                  namespace: cluster-ops
+                data:
+                  ca.crt: |
+                    {{hub fromConfigMap "acm-secrets" "ca-config-map" "ca.crt" | indent 4 hub}}
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high
+    # Configure the OAuth for using LDAP as the identity provider
+    # bindDN: <bindDN> --> Full DN of the user account used to connect with the LDAP. Example: CN=user1,CN=Users,DC=example,DC=com
+    # url: <ldapurl> --> The LDAP url. The configured url is an RFC 2255 URL, which specifies the LDAP host and search parameters to use. The format is ldap://host:port/basedn?attribute?scope?filter
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-oauth-config
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: config.openshift.io/v1
+                kind: OAuth
+                metadata:
+                  name: cluster
+                spec:
+                  identityProviders:
+                    - name: ldapidp
+                      mappingMethod: claim
+                      type: LDAP
+                      ldap:
+                        attributes:
+                          id:
+                            - sAMAccountName
+                          email:
+                            - mail
+                          name:
+                            - cn
+                          preferredUsername:
+                            - sAMAccountName
+                        bindDN: ldap-bind-user
+                        bindPassword:
+                          name: ldap-secret
+                        ca:
+                          name: ca-config-map
+                        insecure: false
+                        url: 'ldaps://ldap.example.com:636'
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high
+    # Create a ConfigMap that stores the LDAP sync configuration.
+    # url: <ldapurl> --> The LDAP url. The configured url is an RFC 2255 URL, which specifies the LDAP host and search parameters to use. The format is ldap://host:port/basedn?attribute?scope?filter
+    # bindDN: <bindDN> --> Full DN of the user account used to connect with the LDAP. Example: CN=user1,CN=Users,DC=example,DC=com
+    # bindPassword: <password> --> Password used by the bindDN to connect with the LDAP. Since this object is a Kubernetes configmap, the password is stored in plaintext.
+    # baseDN: <baseDN> --> The starting point an LDAP server uses when searching for users within your directory.
+    # filter: <filter> --> A valid LDAP search filter. If not provided, defaults to (objectClass=*)
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-ldapsync-configmap
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: ldap-config
+                  namespace: cluster-ops
+                  labels:
+                    template: cronjob-ldap-group-sync
+                data:
+                  ldap-sync.yml: |
+                    kind: LDAPSyncConfig
+                    apiVersion: v1
+                    url: ldaps://<ldapurl>
+                    insecure: false
+                    bindDN: "<ldapbindDN>"
+                    bindPassword: '/etc/secrets/ldap-bind-password'
+                    ca: '/etc/ldap-ca/ca.crt'
+                    augmentedActiveDirectory:
+                        groupsQuery:
+                            derefAliases: never
+                            pageSize: 0
+                        groupUIDAttribute: dn
+                        groupNameAttributes: [ cn ]
+                        groupMembershipAttributes: [ memberOf ]
+                        usersQuery:
+                            baseDN: "<baseDN>"
+                            scope: sub
+                            derefAliases: never
+                            pageSize: 0
+                            filter: '<filter>'
+                        userNameAttributes: [ sAMAccountName ]
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-oauth-ldapsync-cronjob-sa
+        spec:
+          object-templates:
+            - complianceType: mustonlyhave
+              objectDefinition:
+                apiVersion: v1
+                kind: ServiceAccount
+                metadata:
+                  name: ldap-group-syncer
+                  namespace: cluster-ops
+                  labels:
+                    template: cronjob-ldap-group-sync
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-oauth-ldapsync-cronjob-sa-cr
+        spec:
+          object-templates:
+            - complianceType: mustonlyhave
+              objectDefinition:
+                apiVersion: authorization.openshift.io/v1
+                kind: ClusterRole
+                metadata:
+                  name: ldap-group-syncer
+                  labels:
+                    template: cronjob-ldap-group-sync
+                rules:
+                  - apiGroups:
+                      - ""
+                      - user.openshift.io
+                    resources:
+                      - groups
+                    verbs:
+                      - get
+                      - list
+                      - create
+                      - update
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-oauth-ldapsync-cronjob-sa-crb
+        spec:
+          object-templates:
+            - complianceType: mustonlyhave
+              objectDefinition:
+                apiVersion: rbac.authorization.k8s.io/v1
+                kind: ClusterRoleBinding
+                metadata:
+                  name: ldap-group-syncers
+                  labels:
+                    template: cronjob-ldap-group-sync
+                roleRef:
+                  name: ldap-group-syncer
+                  apiGroup: rbac.authorization.k8s.io
+                  kind: ClusterRole
+                subjects:
+                  - name: ldap-group-syncer
+                    namespace: cluster-ops
+                    kind: ServiceAccount
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: policy-oauth-ldapsync-cronjob
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: batch/v1
+                kind: CronJob
+                metadata:
+                  name: cronjob-ldap-group-sync
+                  namespace: cluster-ops
+                  labels:
+                    template: cronjob-ldap-group-sync
+                spec:
+                  schedule: "@hourly"
+                  concurrencyPolicy: Forbid
+                  failedJobsHistoryLimit: 5
+                  successfulJobsHistoryLimit: 5
+                  jobTemplate:
+                    spec:
+                      backoffLimit: 0
+                      ttlSecondsAfterFinished: 1800
+                      template:
+                        spec:
+                          activeDeadlineSeconds: 500
+                          containers:
+                            - name: cronjob-ldap-group-sync
+                              command:
+                                - /bin/bash
+                                - -c
+                                - "oc adm groups sync --sync-config=/etc/config/ldap-group-sync.yaml --confirm"
+                              image: registry.redhat.io/openshift4/ose-cli:latest
+                              volumeMounts:
+                                - name: ldap-sync-volume
+                                  mountPath: /etc/config
+                                - name: "ldap-bind-password"
+                                  mountPath: "/etc/secrets"
+                                - name: "ldap-ca"
+                                  mountPath: "/etc/ldap-ca"
+                          volumes:
+                            - name: ldap-sync-volume
+                              configMap:
+                                name: ldap-config
+                                items:
+                                  - key: ldap-sync.yml
+                                    path: ldap-group-sync.yaml
+                            - name: "ldap-bind-password"
+                              secret:
+                                secretName: "ldap-secret"
+                            - name: "ldap-ca"
+                              configMap:
+                                name: "ca-config-map"
+                          restartPolicy: Never
+                          terminationGracePeriodSeconds: 30
+                          dnsPolicy: ClusterFirst
+                          serviceAccount: ldap-group-syncer
+                          serviceAccountName: ldap-group-syncer
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform
+          severity: high

@@ -1,0 +1,193 @@
+# This policy installs Red Hat cert-manager operator.
+# Cert-manager is installed in the openshift-cert-manager namespace when
+# this policy is enforced.
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: cert-manager-operator-installed
+  namespace: acm-policies
+  annotations:
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+spec:
+  remediationAction: enforce
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: cert-manager-operator-ns
+        spec:
+          remediationAction: inform # will be overridden by remediationAction in parent policy
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Namespace
+                metadata:
+                  name: openshift-cert-manager-operator
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: cert-manager-operator-operator-group
+        spec:
+          remediationAction: inform # will be overridden by remediationAction in parent policy
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: operators.coreos.com/v1
+                kind: OperatorGroup
+                metadata:
+                  name: openshift-cert-manager-operator
+                  namespace: openshift-cert-manager-operator
+                  annotations:
+                    olm.providedAPIs: CertManager.v1alpha1.config.openshift.io,CertManager.v1alpha1.operator.openshift.io,Certificate.v1.cert-manager.io,CertificateRequest.v1.cert-manager.io,Challenge.v1.acme.cert-manager.io,ClusterIssuer.v1.cert-manager.io,Issuer.v1.cert-manager.io,Order.v1.acme.cert-manager.io
+                spec:
+                  upgradeStrategy: Default
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: cert-manager-operator-subscription
+        spec:
+          remediationAction: inform  # will be overridden by remediationAction in parent policy
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: operators.coreos.com/v1alpha1
+                kind: Subscription
+                metadata:
+                  name: openshift-cert-manager-operator
+                  namespace: openshift-cert-manager-operator
+                spec:
+                  channel: tech-preview
+                  installPlanApproval: Automatic
+                  name: openshift-cert-manager-operator
+                  source: redhat-operators
+                  sourceNamespace: openshift-marketplace
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: cert-manager-operator-status
+        spec:
+          remediationAction: inform  # will be overridden by remediationAction in parent policy
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: operators.coreos.com/v1alpha1
+                kind: ClusterServiceVersion
+                metadata:
+                  namespace: openshift-cert-manager-operator
+                spec:
+                  displayName: cert-manager Operator for Red Hat OpenShift
+                status:
+                  phase: Succeeded   # check the csv status to determine if operator is running or not
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: cert-manager-selfsigner-clusterissuer
+        spec:
+          remediationAction: inform  # will be overridden by remediationAction in parent policy
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: cert-manager.io/v1
+                kind: ClusterIssuer
+                metadata:
+                  name: selfsigned-issuer
+                spec:
+                  selfSigned: {}
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: cert-manager-local-root-ca
+        spec:
+          remediationAction: inform  # will be overridden by remediationAction in parent policy
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: cert-manager.io/v1
+                kind: Certificate
+                metadata:
+                  name: local-cluster-root-ca
+                  namespace: openshift-cert-manager
+                spec:
+                  commonName: local-cluster-root-ca
+                  duration: 8760h0m0s
+                  isCA: true
+                  issuerRef:
+                    group: cert-manager.io
+                    kind: ClusterIssuer
+                    name: selfsigned-issuer
+                  privateKey:
+                    algorithm: ECDSA
+                    size: 256
+                  secretName: root-ca
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: cert-manager-local-cluster-issuer
+        spec:
+          remediationAction: inform  # will be overridden by remediationAction in parent policy
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: cert-manager.io/v1
+                kind: ClusterIssuer
+                metadata:
+                  name: local-cluster-issuer
+                spec:
+                  ca:
+                    secretName: root-ca
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: cert-manager-example-cert
+        spec:
+          remediationAction: inform  # will be overridden by remediationAction in parent policy
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: cert-manager.io/v1
+                kind: Certificate
+                metadata:
+                  name: example-cert
+                  namespace: cluster-ops
+                spec:
+                  dnsNames:
+                    - '*.apps.{{ (lookup "config.openshift.io/v1" "DNS" "" "cluster").spec.baseDomain }}'
+                  duration: 2160h0m0s # 90d
+                  issuerRef:
+                    group: cert-manager.io
+                    kind: ClusterIssuer
+                    name: local-cluster-issuer
+                  privateKey:
+                    algorithm: RSA
+                    encoding: PKCS1
+                    size: 2048
+                  renewBefore: 360h0m0s # 15d
+                  secretName: example-cert-secret
+                  subject:
+                    organizations:
+                      - My Organization
+                  usages:
+                    # Default Usages but can be overriden as required
+                    - digital signature
+                    - key encipherment
+                    - server auth

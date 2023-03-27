@@ -80,6 +80,14 @@ For reference, you can find examples of these configurations in: [example-config
 
 The `ldap-secret` Secret and `ca-config-map` ConfigMap should be created separately in the `acm-secrets` namespace prior to deploying the policy. If these resources are created with a different name, or in alternate namespaces, the policy will have to be updated to refelect those changes.
 
+### Cluster Autoscaler Policy
+The [vsphere-cluster-autoscaler](policies/vsphere-cluster-autoscaler.yaml) policy is provided as an example Cluster Autoscaling policy. Resource limits, min / max cores and nodes should be updated to reflect requirements for the environments.
+
+###  Policy
+The [vsphere-infra-machineset-configured.yaml](policies/vsphere-infra-machineset-configured.yaml) policy is provided as an example policy to create infrastructure machineSet for vSphere environments.
+
+This policy uses templating to extract values from the worker node machineSet deployed during install. If the worker node machineSet does not exist, you can optionally remove the templating to hard code specific values into the infra machineSet.
+
 
 ## Deploying The Policies
 Policies should be applied to the ACM Hub Cluster. They can be deployed one by one manually, or deployed in bulk leveraging Kustomize

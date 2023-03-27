@@ -1,0 +1,22 @@
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
+metadata:
+  name: ocp-managed-clusters-policyset-placement
+  namespace: acm-policies
+spec:
+  predicates:
+  - requiredClusterSelector:
+      labelSelector:
+        matchExpressions:
+        - key: vendor
+          operator: In
+          values:
+            - OpenShift
+        - key: name
+          operator: NotIn
+          values:
+            - local-cluster
+        - key: name
+          operator: In
+          values:
+            - cluster-xyz

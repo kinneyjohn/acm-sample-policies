@@ -1,0 +1,13 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: ocp-managed-clusters-policyset-placementbinding
+  namespace: acm-policies
+placementRef:
+  name: ocp-managed-clusters-policyset-placement
+  apiGroup: cluster.open-cluster-management.io
+  kind: Placement
+subjects:
+  - name: ocp-managed-clusters-policyset
+    apiGroup: policy.open-cluster-management.io
+    kind: PolicySet

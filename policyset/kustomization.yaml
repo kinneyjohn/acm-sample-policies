@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ocp-managed-clusters-policyset-placement.yaml
+- ocp-managed-clusters-policyset-placementbinding.yaml
+- ocp-managed-clusters-policyset.yaml
+- vsphere-policyset-placement.yaml
+- vsphere-policyset-placementbinding.yaml
+- vsphere-policyset.yaml
+- managedclustersetbindings

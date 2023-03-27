@@ -1,0 +1,10 @@
+apiVersion: policy.open-cluster-management.io/v1beta1
+kind: PolicySet
+metadata:
+  name: vsphere-policyset
+  namespace: acm-policies
+spec:
+  description: policy set to apply to specific vsphere OCP cluster
+  policies:
+    - vsphere-cluster-autoscaler-configured
+    - vsphere-infra-machineset-configured

@@ -1,0 +1,97 @@
+# This policy creates 1 OpenShift MachineSet that are intended for infrastructure workloads.
+# 
+# The following information is required to create the machine set:
+#   infrastructureID: the infrastructure ID label that is based on the cluster ID that is set when provisioning the cluster.
+#   networkName: Specify the vSphere VM network to deploy the machine set to. This VM network must be where other compute machines reside in the cluster.
+#   datacenterName: Specify the vCenter Datacenter to deploy the machine set on.
+#   datastoreName: Specify the vCenter Datastore to deploy the machine set on.
+#   vSphereFolderName: Specify the path to the vSphere VM folder in vCenter.
+#   resourcePoolName: Specify the vSphere resource pool for your VMs.
+#   vCenterServer: Specify the vCenter server IP or fully qualified domain name.
+#   
+# For more information on creating a machine set on vSphere, consult the OpenShift documentation: 
+# https://docs.openshift.com/container-platform/4.10/machine_management/creating_machinesets/creating-machineset-vsphere.html
+#
+# More details on Infrastructure Nodes in OpenShift 4 here:
+# https://access.redhat.com/solutions/5034771
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: vsphere-infra-machineset-configured
+  namespace: acm-policies
+  annotations:
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+spec:
+  remediationAction: enforce
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: vsphere-infra-machineset
+        spec:
+          severity: high
+          object-templates:
+            - complianceType: musthave # this can be set to "musthave" if replicas need to be managed separately outside of this policy
+              #complianceType: mustonlyhave 
+              objectDefinition:
+                apiVersion: machine.openshift.io/v1beta1
+                kind: MachineSet
+                metadata:
+                  name: '{{ (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName }}-infra'
+                  namespace: openshift-machine-api
+                  labels:
+                    machine.openshift.io/cluster-api-cluster: '{{ (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName }}'
+                spec:
+                  deletePolicy: Newest
+                  replicas: 0 # Replicas set to 0 for testing, but otherwise can be set to 3 or commented out to manage outside of policies
+                  selector:
+                    matchLabels:
+                      machine.openshift.io/cluster-api-cluster: '{{ (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName }}'
+                      machine.openshift.io/cluster-api-machineset: '{{ (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName }}-infra'
+                  template:
+                    metadata:
+                      labels:
+                        machine.openshift.io/cluster-api-cluster: '{{ (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName }}'
+                        machine.openshift.io/cluster-api-machine-role: infra
+                        machine.openshift.io/cluster-api-machine-type: infra
+                        machine.openshift.io/cluster-api-machineset: '{{ (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName }}-infra'
+                    spec:
+                      metadata:
+                        labels:
+                          node-role.kubernetes.io/infra: ""
+                      providerSpec:
+                        value:
+                          apiVersion: machine.openshift.io/v1beta1
+                          credentialsSecret:
+                            name: vsphere-cloud-credentials
+                          diskGiB: 120
+                          kind: VSphereMachineProviderSpec
+                          memoryMiB: 16384
+                          network:
+                            devices:
+                              - networkName: '{{ index (lookup "machine.openshift.io/v1beta1" "MachineSet" "openshift-machine-api" (printf "%s-worker" (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName)).spec.template.spec.providerSpec.value.network.devices 0 "networkName" }}'
+                          numCPUs: 4
+                          numCoresPerSocket: 4
+                          snapshot: ""
+                          template: '{{ (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName }}-rhcos'
+                          userDataSecret:
+                            name: worker-user-data
+                          workspace:
+                            # vCenter details can be pulled from the MachineSet for worker nodes
+                            datacenter: '{{ (lookup "machine.openshift.io/v1beta1" "MachineSet" "openshift-machine-api" (printf "%s-worker" (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName)).spec.template.spec.providerSpec.value.workspace.datacenter }}'
+                            datastore: '{{ (lookup "machine.openshift.io/v1beta1" "MachineSet" "openshift-machine-api" (printf "%s-worker" (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName)).spec.template.spec.providerSpec.value.workspace.datastore }}'
+                            folder: '{{ (lookup "machine.openshift.io/v1beta1" "MachineSet" "openshift-machine-api" (printf "%s-worker" (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName)).spec.template.spec.providerSpec.value.workspace.folder }}'
+                            resourcePool: '{{ (lookup "machine.openshift.io/v1beta1" "MachineSet" "openshift-machine-api" (printf "%s-worker" (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName)).spec.template.spec.providerSpec.value.workspace.resourcePool }}'
+                            server: '{{ (lookup "machine.openshift.io/v1beta1" "MachineSet" "openshift-machine-api" (printf "%s-worker" (lookup "config.openshift.io/v1" "Infrastructure" "" "cluster").status.infrastructureName)).spec.template.spec.providerSpec.value.workspace.server }}'
+                            # Or vCenter details can be manually defined
+                            #datacenter: vcenter-dc
+                            #datastore: ocp-datastore
+                            #folder: /vcenter-dc/vm/OCP
+                            #resourcePool: /vcenter-dc/hosts/hosts/Resources
+                            #server: 10.10.10.10
+          pruneObjectBehavior: DeleteIfCreated
+          remediationAction: inform

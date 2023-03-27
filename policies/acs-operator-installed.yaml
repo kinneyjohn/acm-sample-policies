@@ -1,0 +1,67 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  annotations:
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+  name: acs-operator-installed
+  namespace: acm-policies
+spec:
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: ConfigurationPolicy
+      metadata:
+        name: policy-acs-namespace
+      spec:
+        remediationAction: inform
+        severity: high
+        pruneObjectBehavior: DeleteIfCreated
+        object-templates:
+        - complianceType: musthave
+          objectDefinition:
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: stackrox
+        - complianceType: musthave
+          objectDefinition:
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: rhacs-operator
+        - complianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1
+            kind: OperatorGroup
+            metadata:
+              name: rhacs-operator-group
+              namespace: rhacs-operator
+            spec:
+              upgradeStrategy: Default
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: ConfigurationPolicy
+      metadata:
+        name: policy-acs-operator-install
+      spec:
+        remediationAction: inform
+        severity: high
+        pruneObjectBehavior: DeleteIfCreated
+        object-templates:
+        - complianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: Subscription
+            metadata:
+              name: rhacs-operator
+              namespace: rhacs-operator
+            spec:
+              channel: latest
+              installPlanApproval: Automatic
+              name: rhacs-operator
+              source: redhat-operators
+              sourceNamespace: openshift-marketplace

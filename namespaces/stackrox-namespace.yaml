@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stackrox
+  annotations:
+    openshift.io/description: "Central and Secured Cluster services"
+    openshift.io/display-name: "ACS stackrox"
