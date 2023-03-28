@@ -8,3 +8,4 @@ spec:
   policies:
     - vsphere-cluster-autoscaler-configured
     - vsphere-infra-machineset-configured
+    - ingresscontroller-on-infra-nodes

@@ -1,0 +1,44 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  annotations:
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+  name: ingresscontroller-on-infra-nodes
+  namespace: acm-policies
+spec:
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: ConfigurationPolicy
+      metadata:
+        name: ingresscontroller-on-infra-nodes
+      spec:
+        object-templates:
+        - complianceType: musthave
+          objectDefinition:
+            apiVersion: operator.openshift.io/v1
+            kind: IngressController
+            metadata:
+              name: default
+              namespace: openshift-ingress-operator
+            spec:
+              nodePlacement:
+                nodeSelector:
+                  matchLabels:
+                    node-role.kubernetes.io/infra: ""
+                # Optionally, we can define tolerations if taints were setup on Infra nodes
+                #tolerations:
+                #- effect: NoSchedule
+                #  key: node-role.kubernetes.io/infra
+                #  value: reserved
+                #- effect: NoExecute
+                #  key: node-role.kubernetes.io/infra
+                #  value: reserved
+              replicas: 3
+        pruneObjectBehavior: DeleteIfCreated
+        remediationAction: enforce
+        severity: high

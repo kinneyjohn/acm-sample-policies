@@ -93,5 +93,13 @@ spec:
                             #folder: /vcenter-dc/vm/OCP
                             #resourcePool: /vcenter-dc/hosts/hosts/Resources
                             #server: 10.10.10.10
+                      # Optionally, we can define taints to control workload that can run on Infra nodes
+                      #taints:
+                      #  - effect: NoSchedule
+                      #    key: node-role.kubernetes.io/infra
+                      #    value: reserved
+                      #  - effect: NoExecute
+                      #    key: node-role.kubernetes.io/infra
+                      #    value: reserved
           pruneObjectBehavior: DeleteIfCreated
           remediationAction: inform
