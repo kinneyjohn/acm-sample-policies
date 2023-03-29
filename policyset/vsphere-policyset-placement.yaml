@@ -15,7 +15,7 @@ spec:
         - key: cloud
           operator: In
           values:
-            - VSphere
+            - vSphere
         - key: name
           operator: NotIn
           values:
